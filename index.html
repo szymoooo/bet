@@ -418,397 +418,482 @@
 
   <script>
     let globalBankroll = 0;
-    let isEditingBankroll = false;
-    let historiaZakladow = [];
+let isEditingBankroll = false;
+let historiaZakladow = [];
+let authorPicksStatuses = {};
 
-    document.addEventListener('DOMContentLoaded', function() {
-      console.log('Inicjalizacja aplikacji...');
-      wczytajDane();
-      fetchAuthorPicks();
-      fetchTennisTip();
-    });
+document.addEventListener('DOMContentLoaded', function() {
+  console.log('Inicjalizacja aplikacji...');
+  wczytajDane();
+  fetchAuthorPicks();
+  fetchTennisTip();
+});
 
-    function zapiszDane() {
-      try {
-        localStorage.setItem('bankroll', globalBankroll.toString());
-        localStorage.setItem('historiaZakladow', JSON.stringify(historiaZakladow));
-        
-        console.group('Zapisano dane');
-        console.log('Bankroll:', globalBankroll);
-        console.log('Historia zakładów:');
-        console.table(historiaZakladow);
-        console.groupEnd();
-      } catch (e) {
-        console.error('Błąd zapisu do localStorage:', e);
-      }
+function zapiszDane() {
+  try {
+    localStorage.setItem('bankroll', globalBankroll.toString());
+    localStorage.setItem('historiaZakladow', JSON.stringify(historiaZakladow));
+    localStorage.setItem('authorPicksStatuses', JSON.stringify(authorPicksStatuses));
+    
+    console.group('Zapisano dane');
+    console.log('Bankroll:', globalBankroll);
+    console.log('Historia zakładów:');
+    console.table(historiaZakladow);
+    console.log('Statusy typów:');
+    console.table(authorPicksStatuses);
+    console.groupEnd();
+  } catch (e) {
+    console.error('Błąd zapisu do localStorage:', e);
+  }
+}
+
+function wczytajDane() {
+  console.log('Próba wczytania danych z localStorage...');
+  try {
+    const zapisanyBankroll = localStorage.getItem('bankroll');
+    if (zapisanyBankroll && !isNaN(parseFloat(zapisanyBankroll))) {
+      globalBankroll = parseFloat(zapisanyBankroll);
+      document.getElementById("bankroll").value = globalBankroll;
+      console.log('Wczytano bankroll:', globalBankroll);
     }
 
-    function wczytajDane() {
-      console.log('Próba wczytania danych z localStorage...');
-      try {
-        const zapisanyBankroll = localStorage.getItem('bankroll');
-        if (zapisanyBankroll && !isNaN(parseFloat(zapisanyBankroll))) {
-          globalBankroll = parseFloat(zapisanyBankroll);
-          document.getElementById("bankroll").value = globalBankroll;
-          console.log('Wczytano bankroll:', globalBankroll);
-        }
-
-        const zapisanaHistoria = localStorage.getItem('historiaZakladow');
-        if (zapisanaHistoria) {
-          historiaZakladow = JSON.parse(zapisanaHistoria) || [];
-          historiaZakladow.forEach(z => {
-            if (!z.id) z.id = Date.now();
-          });
-          
-          console.log('Wczytano historię zakładów:');
-          console.table(historiaZakladow);
-        }
-        
-        wyswietlHistorieZakladow();
-        obliczBankroll();
-      } catch (e) {
-        console.error('Błąd odczytu z localStorage:', e);
-        historiaZakladow = [];
-      }
-    }
-
-    function wyswietlHistorieZakladow() {
-      const tabela = document.getElementById("historiaBody");
-      tabela.innerHTML = "";
-
-      if (!Array.isArray(historiaZakladow) || historiaZakladow.length === 0) {
-        console.log('Brak zakładów do wyświetlenia');
-        return;
-      }
-
-      console.log('Wyświetlam historię zakładów, liczba:', historiaZakladow.length);
-
-      historiaZakladow.forEach(zaklad => {
-        const nowyWiersz = tabela.insertRow();
-        nowyWiersz.insertCell(0).innerText = zaklad.data || new Date().toLocaleDateString('pl-PL');
-        nowyWiersz.insertCell(1).innerText = zaklad.kurs ? zaklad.kurs.toFixed(2) : '0.00';
-        nowyWiersz.insertCell(2).innerText = zaklad.stawka ? zaklad.stawka.toFixed(2) : '0.00';
-        const rozliczCell = nowyWiersz.insertCell(3);
-
-        if (zaklad.rozliczenie) {
-          nowyWiersz.style.background = zaklad.rozliczenie.typ === 'wygrana' ? "#d1fae5" : "#fee2e2";
-          rozliczCell.innerHTML = zaklad.rozliczenie.typ === 'wygrana' 
-            ? `Wygrana: ${zaklad.rozliczenie.kwota.toFixed(2)} zł`
-            : `Strata: ${zaklad.rozliczenie.kwota.toFixed(2)} zł`;
-        } else {
-          const wygranyBtn = document.createElement("button");
-          wygranyBtn.innerText = "✔";
-          wygranyBtn.style.background = "green";
-          wygranyBtn.style.color = "white";
-          wygranyBtn.style.marginRight = "5px";
-          wygranyBtn.onclick = () => rozliczZaklad(zaklad.id, 'wygrana');
-
-          const przegranyBtn = document.createElement("button");
-          przegranyBtn.innerText = "✘";
-          przegranyBtn.style.background = "red";
-          przegranyBtn.style.color = "white";
-          przegranyBtn.onclick = () => rozliczZaklad(zaklad.id, 'przegrana');
-
-          rozliczCell.appendChild(wygranyBtn);
-          rozliczCell.appendChild(przegranyBtn);
-        }
+    const zapisanaHistoria = localStorage.getItem('historiaZakladow');
+    if (zapisanaHistoria) {
+      historiaZakladow = JSON.parse(zapisanaHistoria) || [];
+      historiaZakladow.forEach(z => {
+        if (!z.id) z.id = Date.now();
       });
+      console.log('Wczytano historię zakładów:');
+      console.table(historiaZakladow);
     }
-
-    function rozliczZaklad(id, typ) {
-      const zakladIndex = historiaZakladow.findIndex(z => z.id === id);
-      if (zakladIndex === -1) return;
-
-      const zaklad = historiaZakladow[zakladIndex];
-      
-      if (typ === 'wygrana') {
-        const wygrana = (zaklad.kurs * zaklad.stawka - zaklad.stawka);
-        zaklad.rozliczenie = { typ: 'wygrana', kwota: wygrana };
-        globalBankroll += wygrana;
-      } else {
-        zaklad.rozliczenie = { typ: 'przegrana', kwota: zaklad.stawka };
-        globalBankroll -= zaklad.stawka;
-      }
-
-      historiaZakladow[zakladIndex] = zaklad;
-      
-      document.getElementById("bankroll").value = globalBankroll.toFixed(2);
-      zapiszDane();
-      wyswietlHistorieZakladow();
-      obliczBankroll();
+    
+    const zapisaneStatusy = localStorage.getItem('authorPicksStatuses');
+    if (zapisaneStatusy) {
+      authorPicksStatuses = JSON.parse(zapisaneStatusy) || {};
+      console.log('Wczytano statusy typów:');
+      console.table(authorPicksStatuses);
     }
+    
+    wyswietlHistorieZakladow();
+    obliczBankroll();
+  } catch (e) {
+    console.error('Błąd odczytu z localStorage:', e);
+    historiaZakladow = [];
+    authorPicksStatuses = {};
+  }
+}
 
-    function dodajZaklad() {
-      const kurs = parseFloat(document.getElementById("kursInput").value);
-      const stawka = parseFloat(document.getElementById("stawkaInput").value);
-      
-      if (isNaN(kurs) || isNaN(stawka) || kurs <= 1 || stawka <= 0) {
-        alert("Wprowadź poprawne wartości kursu i stawki");
+function wyswietlHistorieZakladow() {
+  const tabela = document.getElementById("historiaBody");
+  tabela.innerHTML = "";
+
+  if (!Array.isArray(historiaZakladow) || historiaZakladow.length === 0) {
+    console.log('Brak zakładów do wyświetlenia');
+    return;
+  }
+
+  console.log('Wyświetlam historię zakładów, liczba:', historiaZakladow.length);
+
+  historiaZakladow.forEach(zaklad => {
+    const nowyWiersz = tabela.insertRow();
+    nowyWiersz.insertCell(0).innerText = zaklad.data || new Date().toLocaleDateString('pl-PL');
+    nowyWiersz.insertCell(1).innerText = zaklad.kurs ? zaklad.kurs.toFixed(2) : '0.00';
+    nowyWiersz.insertCell(2).innerText = zaklad.stawka ? zaklad.stawka.toFixed(2) : '0.00';
+    const rozliczCell = nowyWiersz.insertCell(3);
+
+    if (zaklad.rozliczenie) {
+      nowyWiersz.style.background = zaklad.rozliczenie.typ === 'wygrana' ? "#d1fae5" : "#fee2e2";
+      rozliczCell.innerHTML = zaklad.rozliczenie.typ === 'wygrana' 
+        ? `Wygrana: ${zaklad.rozliczenie.kwota.toFixed(2)} zł`
+        : `Strata: ${zaklad.rozliczenie.kwota.toFixed(2)} zł`;
+    } else {
+      const wygranyBtn = document.createElement("button");
+      wygranyBtn.innerText = "✔";
+      wygranyBtn.style.background = "green";
+      wygranyBtn.style.color = "white";
+      wygranyBtn.style.marginRight = "5px";
+      wygranyBtn.onclick = () => rozliczZaklad(zaklad.id, 'wygrana');
+
+      const przegranyBtn = document.createElement("button");
+      przegranyBtn.innerText = "✘";
+      przegranyBtn.style.background = "red";
+      przegranyBtn.style.color = "white";
+      przegranyBtn.onclick = () => rozliczZaklad(zaklad.id, 'przegrana');
+
+      rozliczCell.appendChild(wygranyBtn);
+      rozliczCell.appendChild(przegranyBtn);
+    }
+  });
+}
+
+function rozliczZaklad(id, typ) {
+  const zakladIndex = historiaZakladow.findIndex(z => z.id === id);
+  if (zakladIndex === -1) return;
+
+  const zaklad = historiaZakladow[zakladIndex];
+  
+  if (typ === 'wygrana') {
+    const wygrana = (zaklad.kurs * zaklad.stawka - zaklad.stawka);
+    zaklad.rozliczenie = { typ: 'wygrana', kwota: wygrana };
+    globalBankroll += wygrana;
+  } else {
+    zaklad.rozliczenie = { typ: 'przegrana', kwota: zaklad.stawka };
+    globalBankroll -= zaklad.stawka;
+  }
+
+  historiaZakladow[zakladIndex] = zaklad;
+  
+  document.getElementById("bankroll").value = globalBankroll.toFixed(2);
+  zapiszDane();
+  wyswietlHistorieZakladow();
+  obliczBankroll();
+}
+
+function dodajZaklad() {
+  const kurs = parseFloat(document.getElementById("kursInput").value);
+  const stawka = parseFloat(document.getElementById("stawkaInput").value);
+  
+  if (isNaN(kurs) || isNaN(stawka) || kurs <= 1 || stawka <= 0) {
+    alert("Wprowadź poprawne wartości kursu i stawki");
+    return;
+  }
+
+  const nowyZaklad = {
+    id: Date.now(),
+    data: new Date().toLocaleDateString('pl-PL'),
+    kurs: kurs,
+    stawka: stawka,
+    rozliczenie: null
+  };
+
+  historiaZakladow.unshift(nowyZaklad);
+  zapiszDane();
+  wyswietlHistorieZakladow();
+  
+  toggleModal();
+  document.getElementById("kursInput").value = "";
+  document.getElementById("stawkaInput").value = "";
+}
+
+function obliczBankroll() {
+  const bankrollInput = document.getElementById("bankroll");
+  const bankroll = parseFloat(bankrollInput.value);
+  
+  if (isNaN(bankroll) || bankroll <= 0) {
+    alert("Podaj poprawną kwotę bankrolla");
+    return;
+  }
+
+  globalBankroll = bankroll;
+  zapiszDane();
+
+  document.getElementById("flatStaking").textContent = (bankroll * 0.02).toFixed(2) + " zł";
+  document.getElementById("ostroznaGra").textContent = (bankroll * 0.01).toFixed(2) + " zł";
+  document.getElementById("agresywnaGra").textContent = (bankroll * 0.05).toFixed(2) + " zł";
+
+  bankrollInput.disabled = true;
+  document.getElementById("obliczBtn").style.display = "none";
+  document.getElementById("editBtn").style.display = "inline-block";
+}
+
+function enableEditBankroll() {
+  document.getElementById("bankroll").disabled = false;
+  document.getElementById("obliczBtn").style.display = "inline-block";
+  document.getElementById("editBtn").style.display = "none";
+}
+
+function toggleModal() {
+  if (globalBankroll <= 0) {
+    alert("Aby dodać zakład, musisz najpierw uzupełnić pole budżetu (bankroll)");
+    return;
+  }
+  document.getElementById("modal").classList.toggle("show");
+}
+
+function obliczKurs() {
+  const kursLaczny = parseFloat(document.getElementById("kursLaczny").value);
+  const kursZdarzenia = parseFloat(document.getElementById("kursZdarzenia").value);
+  
+  if (isNaN(kursLaczny) || isNaN(kursZdarzenia) || kursLaczny <= 0 || kursZdarzenia <= 0) {
+    document.getElementById("kursWynik").textContent = "Wprowadź poprawne wartości kursów";
+    return;
+  }
+
+  const wymaganyKurs = kursLaczny / kursZdarzenia;
+  document.getElementById("kursWynik").textContent = `Wymagany kurs: ${wymaganyKurs.toFixed(2)}`;
+}
+
+function showLoader(containerId) {
+  const container = document.getElementById(containerId);
+  container.innerHTML = '<div class="loader"></div>';
+}
+
+function hideLoader(containerId) {
+  const container = document.getElementById(containerId);
+  const loader = container.querySelector('.loader');
+  if (loader) loader.remove();
+}
+
+async function fetchAuthorPicks() {
+  showLoader('authorPicks');
+  try {
+    const proxyUrl = 'https://api.allorigins.win/get?url=';
+    const targetUrl = 'https://legalnibukmacherzy.pl/author/karol-wasiek/';
+    const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
+    const data = await response.json();
+
+    const parser = new DOMParser();
+    const html = parser.parseFromString(data.contents, 'text/html');
+
+    // Pobierz wszystkie typy
+    const allPicks = [
+      ...html.querySelectorAll('.c-author-picks__list .c-author-picks__item'),
+      ...html.querySelectorAll('.c-author-picks__list-archive .c-author-picks__item')
+    ];
+
+    const picksContainer = document.getElementById('authorPicks');
+
+    // Ustawienia dat
+    const currentDate = new Date();
+    const todayDay = currentDate.getDate();
+    const todayMonth = currentDate.getMonth() + 1;
+    const twoDaysLater = new Date();
+    twoDaysLater.setDate(currentDate.getDate() + 2);
+
+    let newPicksFound = false;
+    let pickCount = 0;
+    let picksHTML = '';
+    let pendingPicksCount = 0;
+    let resolvedPicksCount = 0;
+    let skippedByDateCount = 0;
+
+    allPicks.forEach((pick) => {
+      if (pickCount >= 10) return;
+
+      const dateElement = pick.querySelector('.c-author-picks__date time');
+      const dateText = dateElement ? dateElement.textContent.trim().split(' ')[0] : '';
+      const [day, month] = dateText.split('.').map(Number);
+
+      // Sprawdź zakres dat
+      if (!(month === todayMonth && day >= todayDay && day <= twoDaysLater.getDate())) {
+        skippedByDateCount++;
         return;
       }
 
-      const nowyZaklad = {
-        id: Date.now(),
-        data: new Date().toLocaleDateString('pl-PL'),
-        kurs: kurs,
-        stawka: stawka,
-        rozliczenie: null
-      };
+      const sportElement = pick.querySelector('.c-author-picks__sport');
+      const pickElement = pick.querySelector('.c-author-picks__content-pick p');
+      const oddsElement = pick.querySelector('.c-author-picks__odd strong');
+      const resultText = pick.querySelector('.c-author-picks__content-no');
 
-      historiaZakladow.unshift(nowyZaklad);
-      zapiszDane();
-      wyswietlHistorieZakladow();
-      
-      toggleModal();
-      document.getElementById("kursInput").value = "";
-      document.getElementById("stawkaInput").value = "";
-    }
+      // Sprawdź status
+      let status = 'oczekujący';
+      if (resultText) {
+        const resultStr = resultText.textContent.trim();
+        if (resultStr.includes('Typ nietrafiony')) status = 'przegrany';
+        else if (resultStr.includes('Typ trafiony')) status = 'wygrany';
+      }
 
-    function obliczBankroll() {
-      const bankrollInput = document.getElementById("bankroll");
-      const bankroll = parseFloat(bankrollInput.value);
-      
-      if (isNaN(bankroll) || bankroll <= 0) {
-        alert("Podaj poprawną kwotę bankrolla");
+      if (status !== 'oczekujący') {
+        resolvedPicksCount++;
         return;
       }
 
-      globalBankroll = bankroll;
-      zapiszDane();
+      // Przygotuj dane do wyświetlenia
+      pendingPicksCount++;
+      const sport = sportElement ? sportElement.textContent
+        .replace('USA - NBA, ', '')
+        .replace('Koszykówka', '')
+        .replace(',', '')
+        .trim() : 'Brak sportu';
 
-      document.getElementById("flatStaking").textContent = (bankroll * 0.02).toFixed(2) + " zł";
-      document.getElementById("ostroznaGra").textContent = (bankroll * 0.01).toFixed(2) + " zł";
-      document.getElementById("agresywnaGra").textContent = (bankroll * 0.05).toFixed(2) + " zł";
+      const pickText = pickElement ? pickElement.textContent.trim() : 'Brak typu';
+      const odds = oddsElement ? oddsElement.textContent.trim() : 'Brak kursu';
 
-      bankrollInput.disabled = true;
-      document.getElementById("obliczBtn").style.display = "none";
-      document.getElementById("editBtn").style.display = "inline-block";
-    }
-
-    function enableEditBankroll() {
-      document.getElementById("bankroll").disabled = false;
-      document.getElementById("obliczBtn").style.display = "inline-block";
-      document.getElementById("editBtn").style.display = "none";
-    }
-
-    function toggleModal() {
-      if (globalBankroll <= 0) {
-        alert("Aby dodać zakład, musisz najpierw uzupełnić pole budżetu (bankroll)");
-        return;
-      }
-      document.getElementById("modal").classList.toggle("show");
-    }
-
-    function obliczKurs() {
-      const kursLaczny = parseFloat(document.getElementById("kursLaczny").value);
-      const kursZdarzenia = parseFloat(document.getElementById("kursZdarzenia").value);
+      newPicksFound = true;
       
-      if (isNaN(kursLaczny) || isNaN(kursZdarzenia) || kursLaczny <= 0 || kursZdarzenia <= 0) {
-        document.getElementById("kursWynik").textContent = "Wprowadź poprawne wartości kursów";
-        return;
-      }
-
-      const wymaganyKurs = kursLaczny / kursZdarzenia;
-      document.getElementById("kursWynik").textContent = `Wymagany kurs: ${wymaganyKurs.toFixed(2)}`;
-    }
-
-    function showLoader(containerId) {
-      const container = document.getElementById(containerId);
-      container.innerHTML = '<div class="loader"></div>';
-    }
-
-    function hideLoader(containerId) {
-      const container = document.getElementById(containerId);
-      const loader = container.querySelector('.loader');
-      if (loader) loader.remove();
-    }
-
-    async function fetchAuthorPicks() {
-      showLoader('authorPicks');
-      try {
-        const proxyUrl = 'https://api.allorigins.win/get?url=';
-        const targetUrl = 'https://legalnibukmacherzy.pl/author/karol-wasiek/';
-        const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
-        const data = await response.json();
-
-        const parser = new DOMParser();
-        const html = parser.parseFromString(data.contents, 'text/html');
-
-        const picksList = html.querySelectorAll('.c-author-picks__item');
-        const picksContainer = document.getElementById('authorPicks');
-
-        const currentDate = new Date();
-        const todayDay = currentDate.getDate();
-        const todayMonth = currentDate.getMonth();
-        const threeDaysLater = new Date();
-        threeDaysLater.setDate(todayDay + 3);
-
-        let newPicksFound = false;
-        let pickCount = 0;
-        let picksHTML = '';
-
-        picksList.forEach(pick => {
-          if (pickCount >= 10) return;
-
-          const dateElement = pick.querySelector('.c-author-picks__date time');
-          const sportElement = pick.querySelector('.c-author-picks__sport');
-          const pickElement = pick.querySelector('.c-author-picks__content-pick p');
-          const oddsElement = pick.querySelector('.c-author-picks__odd strong');
-
-          const date = dateElement ? dateElement.textContent.trim() : 'Brak daty';
-          let sport = sportElement ? sportElement.textContent.trim() : 'Brak sportu';
-          const pickText = pickElement ? pickElement.textContent.trim() : 'Brak typu';
-          const odds = oddsElement ? oddsElement.textContent.trim() : 'Brak kursu';
-
-          sport = sport.replace('USA - NBA, ', '').replace('Koszykówka', '').replace(',', '').trim();
-
-          const [day, month] = date.split('.');
-          const pickDay = parseInt(day, 10);
-          const pickMonth = parseInt(month, 10) - 1;
-
-          const isSameMonth = pickMonth === todayMonth;
-          const isWithinRange = pickDay >= todayDay && pickDay <= threeDaysLater.getDate();
-
-          if (isSameMonth && isWithinRange) {
-            newPicksFound = true;
-            
-            let formattedHTML = `
-              <div class="carousel-item">
-                <div class="pick-container">
-                  <div class="pick-row">
-                    <span class="pick-label">Dyscyplina:</span>
-                    <span class="pick-value">Koszykówka</span>
-                    <img src="https://cdn-icons-png.flaticon.com/512/3055/3055855.png" class="sport-icon" alt="Koszykówka">
-                  </div>
-                  <div class="pick-row">
-                    <span class="pick-label">Spotkanie:</span>
-                    <span class="pick-value match-name">${sport}</span>
-                  </div>
-                  <div class="pick-row">
-                    <span class="pick-label">Typ:</span>
-                    <span class="pick-value">${pickText}</span>
-                  </div>
-                  <div class="pick-row">
-                    <span class="pick-label">Kurs:</span>
-                    <span class="pick-value">${odds}</span>
-                  </div>
-                </div>
-              </div>
-            `;
-            
-            picksHTML += formattedHTML;
-            pickCount++;
-          }
-        });
-
-        if (!newPicksFound) {
-          picksHTML = '<p>Brak nowych typów od Karola Waśka.</p>';
-        }
-
-        picksContainer.innerHTML = picksHTML;
-        activateCarousel();
-
-      } catch (error) {
-        console.error('Błąd przy pobieraniu danych:', error);
-        document.getElementById('authorPicks').innerHTML = '<p>Błąd pobierania danych. Spróbuj ponownie później.</p>';
-      } finally {
-        hideLoader('authorPicks');
-      }
-    }
-
-    function activateCarousel() {
-      let slideIndex = 1;
-      const pickItems = document.querySelectorAll('.carousel-item');
-      const dotsContainer = document.querySelector('.dots-container');
-
-      dotsContainer.innerHTML = '';
-
-      pickItems.forEach(() => {
-        const dot = document.createElement('span');
-        dot.classList.add('dot');
-        dotsContainer.appendChild(dot);
-      });
-
-      showSlide(slideIndex);
-
-      function currentSlide(n) {
-        showSlide(slideIndex = n);
-      }
-
-      function showSlide(n) {
-        let slides = document.querySelectorAll('.carousel-item');
-        let dots = document.querySelectorAll('.dot');
-
-        if (n > slides.length) { slideIndex = 1 }
-        if (n < 1) { slideIndex = slides.length }
-
-        slides.forEach(slide => slide.style.display = "none");
-        dots.forEach(dot => dot.classList.remove("active"));
-
-        if (slides[slideIndex - 1]) {
-          slides[slideIndex - 1].style.display = "block";
-          dots[slideIndex - 1].classList.add("active");
-        }
-      }
-
-      let dots = document.querySelectorAll(".dot");
-      dots.forEach((dot, index) => {
-        dot.onclick = function () {
-          currentSlide(index + 1);
-        };
-      });
-    }
-
-    async function fetchTennisTip() {
-      showLoader('tennisTip');
-      try {
-        const proxyUrl = 'https://api.allorigins.win/get?url=';
-        const targetUrl = 'https://www.tenisbydawid.pl/typ-dnia/';
-        const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
-        const data = await response.json();
-
-        const parser = new DOMParser();
-        const html = parser.parseFromString(data.contents, 'text/html');
-
-        const matchElement = html.querySelector('.vc_cta3-content p.typ-dnia + p');
-        let match = matchElement ? matchElement.textContent.split(':')[1]?.trim() : 'Brak spotkania';
-        match = match.replace('Tenis', '').replace(',', '').trim();
-
-        const tipElement = html.querySelector('.vc_cta3-content p.typ-dnia + p + p');
-        const tip = tipElement ? tipElement.textContent.split(':')[1]?.trim() : 'Brak typu';
-
-        const oddsElement = html.querySelector('.vc_cta3-content p.typ-dnia + p + p + p');
-        const odds = oddsElement ? oddsElement.textContent.split(':')[1]?.trim() : 'Brak kursu';
-
-        const tennisTip = document.getElementById('tennisTip');
-        tennisTip.innerHTML = `
+      picksHTML += `
+        <div class="carousel-item">
           <div class="pick-container">
             <div class="pick-row">
               <span class="pick-label">Dyscyplina:</span>
-              <span class="pick-value">Tenis</span>
-              <img src="https://cdn-icons-png.flaticon.com/512/11865/11865470.png" class="sport-icon" alt="Tenis">
+              <span class="pick-value">Koszykówka</span>
+              <img src="https://cdn-icons-png.flaticon.com/512/3055/3055855.png" class="sport-icon" alt="Koszykówka">
             </div>
             <div class="pick-row">
               <span class="pick-label">Spotkanie:</span>
-              <span class="pick-value match-name">${match}</span>
+              <span class="pick-value match-name">${sport}</span>
             </div>
             <div class="pick-row">
               <span class="pick-label">Typ:</span>
-              <span class="pick-value">${tip}</span>
+              <span class="pick-value">${pickText}</span>
             </div>
             <div class="pick-row">
               <span class="pick-label">Kurs:</span>
               <span class="pick-value">${odds}</span>
             </div>
           </div>
-        `;
-      } catch (error) {
-        console.error('Błąd przy pobieraniu danych z tenisbydawid:', error);
-        document.getElementById('tennisTip').innerHTML = 'Aktualnie brak nowych typów dla TenisByDawid.';
-      } finally {
-        hideLoader('tennisTip');
-      }
+        </div>
+      `;
+      
+      pickCount++;
+    });
+
+    // Podsumowanie w konsoli
+    console.log('Podsumowanie typów Charles Basket:');
+    console.log(`- Przeanalizowano typów: ${allPicks.length}`);
+    console.log(`- Pominięto (data poza zakresem): ${skippedByDateCount}`);
+    console.log(`- Typy w zakresie dat: ${pendingPicksCount + resolvedPicksCount}`);
+    console.log(`  - Oczekujące: ${pendingPicksCount}`);
+    console.log(`  - Rozstrzygnięte: ${resolvedPicksCount}`);
+    console.log(`- Wyświetlane: ${pickCount}`);
+
+    if (!newPicksFound) {
+      picksHTML = '<p>Brak nowych typów do wyświetlenia (wszystkie zostały już rozstrzygnięte lub brak danych w zakresie dat).</p>';
     }
-  </script>
+
+    picksContainer.innerHTML = picksHTML;
+    
+    if (pickCount > 0) {
+      activateCarousel();
+    }
+  } catch (error) {
+    console.error('Błąd przy pobieraniu danych:', error);
+    document.getElementById('authorPicks').innerHTML = '<p>Błąd pobierania danych. Spróbuj ponownie później.</p>';
+  } finally {
+    hideLoader('authorPicks');
+  }
+}
+    
+
+function activateCarousel() {
+  let slideIndex = 1;
+  const pickItems = document.querySelectorAll('.carousel-item');
+  const dotsContainer = document.querySelector('.dots-container');
+
+  dotsContainer.innerHTML = '';
+
+  pickItems.forEach(() => {
+    const dot = document.createElement('span');
+    dot.classList.add('dot');
+    dotsContainer.appendChild(dot);
+  });
+
+  showSlide(slideIndex);
+
+  function currentSlide(n) {
+    showSlide(slideIndex = n);
+  }
+
+  function showSlide(n) {
+    let slides = document.querySelectorAll('.carousel-item');
+    let dots = document.querySelectorAll('.dot');
+
+    if (n > slides.length) { slideIndex = 1 }
+    if (n < 1) { slideIndex = slides.length }
+
+    slides.forEach(slide => slide.style.display = "none");
+    dots.forEach(dot => dot.classList.remove("active"));
+
+    if (slides[slideIndex - 1]) {
+      slides[slideIndex - 1].style.display = "block";
+      dots[slideIndex - 1].classList.add("active");
+    }
+  }
+
+  let dots = document.querySelectorAll(".dot");
+  dots.forEach((dot, index) => {
+    dot.onclick = function () {
+      currentSlide(index + 1);
+    };
+  });
+}
+async function fetchTennisTip() {
+  showLoader('tennisTip');
+  try {
+    const proxyUrl = 'https://api.allorigins.win/get?url=';
+    const targetUrl = 'https://www.tenisbydawid.pl/typ-dnia/';
+    console.log('Rozpoczęcie pobierania typów tenisowych...');
+    
+    const response = await fetch(proxyUrl + encodeURIComponent(targetUrl));
+    const data = await response.json();
+
+    const parser = new DOMParser();
+    const html = parser.parseFromString(data.contents, 'text/html');
+
+    const matchElement = html.querySelector('.vc_cta3-content p.typ-dnia + p');
+    const tipElement = html.querySelector('.vc_cta3-content p.typ-dnia + p + p');
+    const oddsElement = html.querySelector('.vc_cta3-content p.typ-dnia + p + p + p');
+
+    let match = 'Brak spotkania';
+    let tip = 'Brak typu';
+    let odds = 'Brak kursu';
+    let status = 'oczekujący';
+
+    if (matchElement) {
+      match = matchElement.textContent.split(':')[1]?.trim() || 'Brak spotkania';
+      match = match.replace('Tenis', '').replace(',', '').trim();
+    }
+
+    if (tipElement) {
+      tip = tipElement.textContent.split(':')[1]?.trim() || 'Brak typu';
+    }
+
+    if (oddsElement) {
+      odds = oddsElement.textContent.split(':')[1]?.trim() || 'Brak kursu';
+    }
+
+    // Sprawdź status (na podstawie klasy lub tekstu jeśli dostępne)
+    const resultElement = html.querySelector('.vc_cta3-content .typ-dnia + p + p + p + p');
+    if (resultElement) {
+      const resultText = resultElement.textContent.toLowerCase();
+      if (resultText.includes('nietrafiony')) status = 'przegrany';
+      else if (resultText.includes('trafiony')) status = 'wygrany';
+    }
+
+    console.group('Analiza typu tenisowego');
+    console.log('Dane typu:');
+    console.log('- Spotkanie:', match);
+    console.log('- Typ:', tip);
+    console.log('- Kurs:', odds);
+    console.log('- Status:', status);
+    console.groupEnd();
+
+    // Wyświetl tylko jeśli status to "oczekujący"
+    const tennisTip = document.getElementById('tennisTip');
+    if (status === 'oczekujący') {
+      tennisTip.innerHTML = `
+        <div class="pick-container">
+          <div class="pick-row">
+            <span class="pick-label">Dyscyplina:</span>
+            <span class="pick-value">Tenis</span>
+            <img src="https://cdn-icons-png.flaticon.com/512/11865/11865470.png" class="sport-icon" alt="Tenis">
+          </div>
+          <div class="pick-row">
+            <span class="pick-label">Spotkanie:</span>
+            <span class="pick-value match-name">${match}</span>
+          </div>
+          <div class="pick-row">
+            <span class="pick-label">Typ:</span>
+            <span class="pick-value">${tip}</span>
+          </div>
+          <div class="pick-row">
+            <span class="pick-label">Kurs:</span>
+            <span class="pick-value">${odds}</span>
+          </div>
+        </div>
+      `;
+    } else {
+      tennisTip.innerHTML = 'Aktualnie brak oczekujących typów dla TenisByDawid.';
+      console.log('Typ pominięty - status:', status);
+    }
+
+  } catch (error) {
+    console.error('Błąd przy pobieraniu danych z tenisbydawid:', error);
+    document.getElementById('tennisTip').innerHTML = 'Błąd pobierania danych. Spróbuj ponownie później.';
+  } finally {
+    hideLoader('tennisTip');
+  }
+}
+</script>
 </body>
 </html>
